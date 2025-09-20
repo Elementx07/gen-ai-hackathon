@@ -1,97 +1,99 @@
 import os
-import base64
-import io
-from PIL import Image
 import streamlit as st
 from streamlit.components.v1 import html
+import subprocess # For running 'which gcloud'
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig, Part
+# Import the new website generator pipeline
+from src.website_generator import generate_website_files
 
-# ---------- CONFIG ----------11
-PROJECT_ID = os.getenv("PROJECT_ID")
-LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
-MODEL = os.getenv("MODEL")
-
-
-# Init client for Vertex AI
-vertexai.init(project=PROJECT_ID, location=LOCATION)
-
-# ---------- GENERATION ----------
-def generate_website(raw_description: str, images: list) -> str:
+# --- Helper to get gcloud path ---
+def get_gcloud_path():
     """
-    Ask the model to return a single HTML file with CSS and JS.
+    Finds the path to the gcloud executable.
+    Checks common locations if 'which' command fails.
     """
-    system = (
-        "You are an expert web developer. You will be given a product description and a product image."
-        "Your task is to generate a single HTML file for a beautiful, modern, and polished e-commerce storefront to sell this product."
-        "The HTML file should include inline CSS and JavaScript for a complete, visually appealing, and functional prototype."
-        "Use Material Design principles for the UI/UX. The layout should be responsive."
-        "The image will be provided as a base64 encoded string. You should embed it in the HTML."
-    )
-    
-    image_parts = [Part.from_data(data=base64.b64decode(img), mime_type="image/png") for img in images]
+    # 1. Try 'which' command first (for standard PATH)
+    try:
+        result = subprocess.run(
+            "which gcloud",
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        path = result.stdout.strip()
+        if path and os.path.exists(path):
+            return path
+    except subprocess.CalledProcessError:
+        pass # Not found in PATH, try next method
 
-    prompt = f"Product description: {raw_description}"
+    # 2. Check default installation location in user's home directory
+    try:
+        home_dir = os.path.expanduser("~")
+        default_path = os.path.join(home_dir, "google-cloud-sdk", "bin", "gcloud")
+        if os.path.exists(default_path):
+            return default_path
+    except Exception:
+        pass # Could not check default path
 
-    model = GenerativeModel(MODEL, system_instruction=system)
-    resp = model.generate_content(
-        [prompt] + image_parts,
-        generation_config=GenerationConfig(
-            max_output_tokens=8192,
-            temperature=0.2,
-        ),
-    )
-
-    return resp.text
-
-# ---------- UTIL ----------
-def file_to_base64(f) -> str:
-    img = Image.open(f).convert("RGB")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode("utf-8")
+    # 3. If not found, return None
+    return None
 
 # ---------- STREAMLIT UI ----------
 st.set_page_config(layout="wide")
-st.title("AI-Powered Storefront Generator (Streamlit + Vertex AI)")
+st.title("AI-Powered Artisan Website Generator")
 
 with st.sidebar:
-    st.header("Settings")
-    model_input = st.text_input("Model", value=MODEL)
-    st.info("Set GOOGLE_APPLICATION_CREDENTIALS and GOOGLE_CLOUD_PROJECT env vars before running.")
+    st.header("Configuration")
+    PROJECT_ID = os.getenv("PROJECT_ID")
+    st.text_input("Google Cloud Project ID", value=PROJECT_ID, disabled=True)
+    st.info("Ensure your Google Cloud Project ID is set in the .env file.")
 
-uploaded = st.file_uploader("Upload product images", type=["png","jpg","jpeg"], accept_multiple_files=True)
-desc = st.text_area("Product description / artisan notes", height=160)
-if st.button("Generate Website"):
-    if not uploaded or not desc.strip():
-        st.error("Upload at least one image and provide a description.")
+    st.header("Deployment Tools Check")
+    gcloud_path = get_gcloud_path()
+    if gcloud_path:
+        st.success(f"gcloud CLI found at: {gcloud_path}")
     else:
-        # images -> base64
-        images_b64 = []
-        st.subheader("Enhanced images (preview)")
-        cols = st.columns(min(4, len(uploaded)))
-        for i, f in enumerate(uploaded):
-            b64 = file_to_base64(f)
-            images_b64.append(b64)
-            with cols[i % len(cols)]:
-                st.image(f, use_column_width=True)
+        st.error("gcloud CLI not found. Please install and configure it.")
+        st.markdown("[Install gcloud CLI](https://cloud.google.com/sdk/docs/install)")
+    
+    # Note: Docker daemon check is handled by the deploy command itself now.
 
-        st.info("Generating website (Vertex AI)...")
-        try:
-            website_html = generate_website(desc, images_b64)
-            st.success("Website generated.")
-        except Exception as e:
-            st.error(f"Website generation failed: {e}")
-            st.stop()
+desc = st.text_area(
+    "Describe your artisan business and products:",
+    height=200,
+    placeholder="Example: 'I am a potter named Sarah. I make unique, handmade ceramic mugs and bowls. My style is rustic and earthy. I have 5 types of mugs (forest green, ocean blue, desert sand) and 3 types of bowls (small, medium, large). Mugs are $25, bowls are $40. I also do custom orders. Contact me at sarah@pottery.com.'"
+)
 
-        st.subheader("Generated Website Preview")
-        html(website_html, height=600, scrolling=True)
+if st.button("Generate Website Files"):
+    if not desc.strip():
+        st.error("Please provide a description for your business.")
+    elif not os.getenv("PROJECT_ID") or os.getenv("PROJECT_ID") == "YOUR_GOOGLE_CLOUD_PROJECT_ID":
+        st.error("Please set your Google Cloud Project ID in the .env file.")
+    else:
+        with st.spinner("Generating website source code... This may take a minute."):
+            try:
+                output_dir = generate_website_files(desc)
+                st.success(f"Website source code generated successfully in the '{output_dir}' directory!")
+                st.balloons()
+                
+                st.header("Next Steps: Build and Deploy")
+                st.markdown("Open your terminal and run the following commands one by one:")
+                
+                st.code(f"""
+# 1. Navigate into the generated project directory
+cd {output_dir}
 
-        # download export
-        st.download_button(
-            label="Download website HTML",
-            data=website_html,
-            file_name="storefront.html",
-            mime="text/html",
-        )
+# 2. Install the necessary packages (this may take a minute)
+npm install
+
+# 3. (Optional) Run the local development server to preview your site
+npm run dev
+
+# 4. When you are ready, deploy to Google Cloud App Engine
+gcloud app deploy
+                """, language="bash")
+
+            except Exception as e:
+                st.error(f"An error occurred during code generation: {e}")
+                st.exception(e) # Display full traceback for debugging
