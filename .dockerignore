@@ -1,0 +1,10 @@
+# Ignore Node dependencies
+node_modules
+
+
+# Python caches
+__pycache__/
+*.pyc
+
+
+
