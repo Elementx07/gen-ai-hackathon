@@ -1,32 +1,30 @@
 import os
-import vertexai
 from dotenv import load_dotenv
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from google import genai
+from google.genai import types
 
-# Load environment variables from .env file
-load_dotenv()
+PROJECT_ID = os.environ.get("PROJECT_ID")
+LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+MODEL = os.environ.get("MODEL", "gemini-2.5-pro")
 
-# Initialize Vertex AI client once
-PROJECT_ID = os.getenv("PROJECT_ID")
-LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION")
-MODEL = os.getenv("MODEL")
-
-# Check if the project ID is set
+if not PROJECT_ID:
+    raise ValueError("PROJECT_ID environment variable not set")
 if not PROJECT_ID or PROJECT_ID == "YOUR_GOOGLE_CLOUD_PROJECT_ID":
-    raise ValueError("PROJECT_ID not found or not set in .env file. Please set it to your Google Cloud Project ID.")
+    raise ValueError("PROJECT_ID not set. Set it in your .env file.")
 
-vertexai.init(project=PROJECT_ID, location=LOCATION)
+client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
 
-def call_gemini(prompt: str, system_prompt: str = None, max_output_tokens: int = 8192, temperature: float = 0.4) -> str:
-    """
-    Calls the Gemini model with a given prompt and system instruction.
-    """
-    model = GenerativeModel(MODEL, system_instruction=system_prompt)
-    resp = model.generate_content(
-        [prompt],
-        generation_config=GenerationConfig(
-            max_output_tokens=max_output_tokens,
-            temperature=temperature,
-        ),
+def call_gemini(prompt: str, system_prompt: str = None, max_output_tokens: int = 8024, temperature: float = 0.4) -> str:
+    full_prompt = f"{system_prompt}\n{prompt}" if system_prompt else prompt
+
+    generation_config = types.GenerateContentConfig(
+        temperature=temperature,
+        max_output_tokens=max_output_tokens
     )
-    return resp.text
+
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=[{"text": full_prompt}],
+        config=generation_config
+    )
+    return response.text
