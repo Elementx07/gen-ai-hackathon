@@ -2,10 +2,13 @@ import os
 import streamlit as st
 from streamlit.components.v1 import html
 import subprocess # For running 'which gcloud'
+from dotenv import load_dotenv
 
 # Import the new website generator pipeline
 from src.website_generator import generate_website_files
 
+
+load_dotenv()
 # --- Helper to get gcloud path ---
 def get_gcloud_path():
     """
@@ -68,32 +71,38 @@ desc = st.text_area(
 if st.button("Generate Website Files"):
     if not desc.strip():
         st.error("Please provide a description for your business.")
-    elif not os.getenv("PROJECT_ID") or os.getenv("PROJECT_ID") == "YOUR_GOOGLE_CLOUD_PROJECT_ID":
+    elif not os.getenv("PROJECT_ID"):
         st.error("Please set your Google Cloud Project ID in the .env file.")
     else:
         with st.spinner("Generating website source code... This may take a minute."):
             try:
-                output_dir = generate_website_files(desc)
+                # 1. Call AI to extract site data
+                from src.ai_utils import call_gemini
+                from src.prompts import DATA_EXTRACTION_PROMPT
+                site_data_raw = call_gemini(
+                    prompt=DATA_EXTRACTION_PROMPT,
+                    system_prompt="You are a data analyst extracting structured JSON from text."
+                )
+
+                # 3. Generate website
+                output_dir = generate_website_files(
+                    site_data_raw=site_data_raw,
+                    user_prompt=desc,
+                    output_path="generated_website"
+                )
+
                 st.success(f"Website source code generated successfully in the '{output_dir}' directory!")
                 st.balloons()
-                
+
                 st.header("Next Steps: Build and Deploy")
                 st.markdown("Open your terminal and run the following commands one by one:")
-                
                 st.code(f"""
-# 1. Navigate into the generated project directory
 cd {output_dir}
-
-# 2. Install the necessary packages (this may take a minute)
 npm install
-
-# 3. (Optional) Run the local development server to preview your site
 npm run dev
-
-# 4. When you are ready, deploy to Google Cloud App Engine
 gcloud app deploy
                 """, language="bash")
 
             except Exception as e:
                 st.error(f"An error occurred during code generation: {e}")
-                st.exception(e) # Display full traceback for debugging
+                st.exception(e)
