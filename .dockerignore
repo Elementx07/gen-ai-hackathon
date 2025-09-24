@@ -1,6 +1,6 @@
 # Ignore Node dependencies
-node_modules
-
+generated_website/node_modules/
+.venv
 
 # Python caches
 __pycache__/
