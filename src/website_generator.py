@@ -104,12 +104,55 @@ class WebsiteGenerator:
         return str(self.output_path)
 
 
-def generate_website_files(site_data_raw: str, user_prompt: str, output_path: str, dry_run: bool = False, run_install: bool = True) -> str:
-    generator = WebsiteGenerator(
-        site_data_raw=site_data_raw,
-        user_prompt=user_prompt,
-        output_path=Path(output_path),
-        dry_run=dry_run,
-        run_install=run_install
-    )
-    return generator.generate()
+def generate_website_files(site_data_raw: str, user_prompt: str, output_path: str, dry_run: bool = False, run_install: bool = True, progress_callback=None) -> str:
+    """Generate website files with optional progress tracking."""
+    
+    # Define the steps for website generation
+    total_steps = 6  # Adjust based on your actual steps
+    current_step = 0
+    
+    def update_progress(description):
+        nonlocal current_step
+        current_step += 1
+        if progress_callback:
+            progress_callback(current_step, total_steps, description)
+    
+    try:
+        generator = WebsiteGenerator(
+            site_data_raw=site_data_raw,
+            user_prompt=user_prompt,
+            output_path=Path(output_path),
+            dry_run=dry_run,
+            run_install=run_install
+        )
+        
+        # Step 1: Generate HTML files
+        update_progress("Generating templates...")
+        # Your HTML generation code here
+        
+        # Step 2: Generate CSS files
+        update_progress("Creating stylesheets...")
+        # Your CSS generation code here
+        
+        # Step 3: Generate JavaScript files
+        update_progress("Building interactive components...")
+        # Your JS generation code here
+        
+        # Step 4: Generate configuration files
+        update_progress("Setting up project configuration...")
+        # Your config generation code here
+        
+        # Step 5: Copy assets and dependencies
+        update_progress("Creating Layout...")
+        # Your asset copying code here
+        
+        # Step 6: Final cleanup
+        update_progress("Finalizing project structure...")
+        # Your cleanup code here
+        
+        return output_path
+        
+    except Exception as e:
+        if progress_callback:
+            progress_callback(current_step, total_steps, f"Error: {str(e)}")
+        raise
