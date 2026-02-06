@@ -1,5 +1,5 @@
 import os
-from typing import Optional, Type, TypeVar
+from typing import Optional, Type, TypeVar, Any
 from dotenv import load_dotenv
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -126,7 +126,7 @@ def call_gemini_structured(
 def create_chain(
     prompt_template: str,
     system_prompt: Optional[str] = None,
-    output_parser: Optional[any] = None,
+    output_parser: Optional[Any] = None,
 ):
     """
     Create a reusable LangChain chain.
