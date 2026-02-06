@@ -1,7 +1,6 @@
 import os
 import streamlit as st
 import json
-import re
 import shutil
 import streamlit as st
 from pathlib import Path
@@ -46,34 +45,29 @@ if st.button("Generate Website Files"):
         status_text = st.empty()
         
         try:
-            from src.ai_utils import call_gemini
-            from src.prompts import DATA_EXTRACTION_PROMPT
+            from src.ai_utils import call_gemini_structured
+            from src.models import SiteData
+            from src.langchain_prompts import data_extraction_prompt, DATA_EXTRACTION_SYSTEM_PROMPT
 
-           
-            
-            site_data_raw = call_gemini(
-                prompt=DATA_EXTRACTION_PROMPT.format(description=desc),
-                system_prompt="Return strictly valid JSON. Include all requested fields completely."
-            )
-
-             # Step 1: Call AI for JSON output
-            status_text.text("Step 1: Analyzing business description...")
+             # Step 1: Call AI for structured JSON output using LangChain
+            status_text.text("Step 1: Analyzing business description with LangChain...")
             progress_bar.progress(10)
 
+            # Use LangChain structured output with Pydantic validation
+            site_data_parsed = call_gemini_structured(
+                prompt=data_extraction_prompt.format(description=desc),
+                pydantic_model=SiteData,
+                system_prompt=DATA_EXTRACTION_SYSTEM_PROMPT
+            )
             
+            # Convert Pydantic model to dict for JSON serialization
+            site_data_dict = site_data_parsed.model_dump()
             
-            cleaned_output = site_data_raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-            match = re.search(r"\{.*\}", cleaned_output, re.S)
-            if not match:
-                raise ValueError("No JSON object found")
-            site_data_parsed = json.loads(match.group(0))
-
-            
-            
+            # Save to file
             data_file = Path("generated_website/src/data/products.json")
             data_file.parent.mkdir(parents=True, exist_ok=True)
             with open(data_file, "w", encoding="utf-8") as f:
-                json.dump(site_data_parsed, f, indent=2)
+                json.dump(site_data_dict, f, indent=2)
 
             # Step 4: Generate website files with detailed progress
             status_text.text("Step 2: Generating website components...")
@@ -90,7 +84,7 @@ if st.button("Generate Website Files"):
                 status_text.text(f"Step 4/5: {step_description}")
             
             output_dir = generate_website_files(
-                site_data_raw=json.dumps(site_data_parsed, indent=2),
+                site_data_raw=json.dumps(site_data_dict, indent=2),
                 user_prompt=desc,
                 output_path="generated_website",
                 progress_callback=website_progress_callback
